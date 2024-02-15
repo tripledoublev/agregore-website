@@ -1,0 +1,191 @@
+<meta lang="en">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DLINKTREE</title>
+<link rel="stylesheet" type="text/css" href="styles.css">
+<style>
+    h1 {
+        text-align: center;
+    }
+</style>
+<main>
+    <div id="backdrop"></div>
+
+    <div id="loadingSpinner" style="display: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="margin: auto; background: none; display: block; shape-rendering: auto;" width="200px" height="200px" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid">
+            <g>
+              <path d="M50 20A30 30 0 1 0 80 50.00000000000001" fill="none" stroke="#2de56e" stroke-width="14"></path>
+              <path d="M49 8L49 32L61 20L49 8" fill="#2de56e"></path>
+              <animateTransform attributeName="transform" type="rotate" repeatCount="indefinite" dur="2.380952380952381s" values="0 50 50;360 50 50" keyTimes="0;1"></animateTransform>
+            </g>
+        </svg>
+    </div>
+
+    <div class="grid-container">
+        
+        <div id="header-image-uploader" class="linktree-editable">
+           Click to upload header image
+        </div>
+       
+<h1 id='title' contenteditable="true">Click on the title to edit</h1>   
+<div class="links" id="linksContainer">
+    <!-- Links will be dynamically added here -->
+</div>
+<button id="addLinkButton">Add New Link</button>
+ <!-- Hidden form for adding/editing links -->
+ <div id="linkForm" style="display: none;">
+    <input type="text" id="linkText" placeholder="Link Text">
+    <input type="url" id="linkUrl" placeholder="Link URL">
+    <button type="button" onclick="addLink()">Save Link</button>
+</div>
+
+<div id="linkForm" style="display: none;">
+<input type="text" id="linkText" placeholder="Link Text">
+<input type="url" id="linkUrl" placeholder="Link URL">
+</div>
+    </div>
+    <div id="dweb-container">
+        <div>
+            <label for="protocolSelect">
+                Protocol:
+                <select id="protocolSelect">
+                    <option value="ipfs" selected>Inter-Planetary File System (IPFS://)</option>
+                    <option value="hyper">Hypercore-Protocol (HYPER://)</option>
+                </select>
+            </label>
+            <button id="uploadButton">Upload to DWeb</button>
+            
+        </div>
+
+        <div id="fetchContainer">
+            <input id="fetchCidInput" type="text" placeholder="Enter IPFS CID or Hyperdrive URL ">
+            <button id="fetchButton">Fetch from DWeb</button>
+        </div>
+        
+    </div>
+    <ul id="uploadListBox"></ul>
+</main>
+<script>
+
+function $(query) {
+    return document.querySelector(query)
+}
+
+const protocolSelect = $('#protocolSelect')
+
+    document.getElementById('addLinkButton').addEventListener('click', function() {
+    document.getElementById('linkForm').style.display = 'block';
+    // Reset form values if necessary
+    document.getElementById('linkText').value = '';
+    document.getElementById('linkUrl').value = '';
+});
+function addLink() {
+    const linkText = document.getElementById('linkText').value;
+    const linkUrl = document.getElementById('linkUrl').value;
+    
+    if (!linkText || !linkUrl) {
+        alert("Please fill out both fields.");
+        return;
+    }
+
+    const linksContainer = document.getElementById('linksContainer');
+    const newLink = document.createElement('a');
+    newLink.href = linkUrl;
+    newLink.textContent = linkText;
+    newLink.target = '_blank'; // Open in new tab
+    linksContainer.appendChild(newLink);
+
+    // Hide the form again
+    document.getElementById('linkForm').style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const headerImage = document.getElementById('header-image-uploader');
+
+    // Invisible file input
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+
+    // Click on div to trigger file input
+    headerImage.addEventListener('click', () => fileInput.click());
+
+    // File input change event to handle the files
+    fileInput.addEventListener('change', (event) => {
+        const files = event.target.files;
+        if (files.length) {
+            uploadFiles(files); // Assuming this is your upload function
+        }
+    });
+
+    // Drag and drop
+    headerImage.addEventListener('dragover', (event) => event.preventDefault());
+    headerImage.addEventListener('drop', (event) => {
+        event.preventDefault();
+        const files = event.dataTransfer.files;
+        if (files.length) {
+            uploadFiles(files); // Assuming this is your upload function
+        }
+    });
+});
+
+async function uploadFiles(files) {
+    const protocol = protocolSelect.value;
+
+    const formData = new FormData();
+    // Append each file to the FormData
+    for (const file of files) {
+        formData.append('file', file, file.name);
+    }
+
+    // Construct the URL based on the protocol
+    let url;
+    if (protocol === 'hyper') {
+        const hyperdriveUrl = await generateHyperdriveKey('drag-and-drop');
+        url = `${hyperdriveUrl}`;
+    } else {
+        url = `ipfs://bafyaabakaieac/`;
+    }
+
+    // Perform the upload for each file
+    try {
+        const response = await fetch(url, {
+            method: 'PUT',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            addError(files, await response.text());
+        }
+        const urlResponse = protocol === 'hyper' ? response.url : response.headers.get('Location');
+        const filename = files[0].name;
+
+        // Set the image URL as background for the linktreeEditable div
+        document.getElementById('header-image-uploader').style.backgroundImage = `url('${urlResponse}${filename}')`;
+
+        console.log(`Uploaded ${files.length} files to ${urlResponse}`);
+
+    } catch (error) {
+        console.error(`Error uploading ${files}:`, error);
+    }
+}
+
+async function generateHyperdriveKey(name) {
+    try {
+        const response = await fetch(`hyper://localhost/?key=${name}`, { method: 'POST' });
+        if (!response.ok) {
+            throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
+        }
+        return await response.text();  // This returns the hyper:// URL
+    } catch (error) {
+        console.error('Error generating Hyperdrive key:', error);
+        throw error;
+    }
+}
+
+</script>
+<script type="module" src="common.js"></script>
+<script type="module" src="dweb.js"></script>
+<script type="module" src="codeEditor.js"></script>
+
